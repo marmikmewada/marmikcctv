@@ -1,312 +1,425 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSpring, animated } from 'react-spring'
+import styled from 'styled-components'
+import * as THREE from 'three'
+import { Canvas, useFrame, extend, useLoader } from '@react-three/fiber'
+import { Text, OrbitControls } from '@react-three/drei'
+import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader'
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry'
+
+extend({ TextGeometry })
+
+const StyledContainer = styled.div`
+  min-height: 100vh;
+  background-color: #000;
+  color: #ff3e3e;
+  font-family: 'Orbitron', sans-serif;
+`
+
+const StyledHeader = styled(motion.header)`
+  position: fixed;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  z-index: 1000;
+`
+
+const StyledNav = styled.nav`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+`
+
+const StyledLogo = styled(motion.a)`
+  color: #ff3e3e;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1.5rem;
+`
+
+const StyledMenu = styled(motion.div)`
+  display: flex;
+  gap: 1rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    width: 100%;
+    display: ${props => (props.isOpen ? 'flex' : 'none')};
+  }
+`
+
+const StyledLink = styled(motion.a)`
+  color: ${props => (props.active ? '#ff3e3e' : '#fff')};
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1.1rem;
+  transition: color 0.3s ease;
+
+  &:hover {
+    color: #ff3e3e;
+  }
+`
+
+const StyledMenuButton = styled(motion.button)`
+  display: none;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  cursor: pointer;
+
+  @media (max-width: 768px) {
+    display: block;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+  }
+`
+
+const StyledButton = styled(motion.button)`
+  background-color: #ff3e3e;
+  color: #000;
+  border: none;
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+
+  &:hover {
+    background-color: #ff6b6b;
+  }
+`
+
+const StyledSection = styled(motion.section)`
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  position: relative;
+`
+
+const StyledTitle = styled(motion.h2)`
+  font-size: 3rem;
+  margin-bottom: 2rem;
+  text-align: center;
+  background: linear-gradient(45deg, #ff3e3e, #ff6b6b);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  @media (max-width: 768px) {
+    font-size: 2rem;
+  }
+`
+
+const StyledGrid = styled(motion.div)`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  width: 100%;
+  max-width: 1200px;
+`
+
+const StyledCard = styled(motion.div)`
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 1.5rem;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(255, 62, 62, 0.2);
+  }
+`
+
+const StyledForm = styled(motion.form)`
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 500px;
+`
+
+const StyledInput = styled.input`
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #fff;
+  font-size: 1rem;
+
+  &:focus {
+    outline: none;
+    border-color: #ff3e3e;
+  }
+`
+
+const StyledTextArea = styled.textarea`
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  color: #fff;
+  font-size: 1rem;
+  resize: vertical;
+
+  &:focus {
+    outline: none;
+    border-color: #ff3e3e;
+  }
+`
+
+const AnimatedBackground = () => {
+  const mesh = useRef()
+
+  useFrame((state, delta) => {
+    mesh.current.rotation.x += delta * 0.1
+    mesh.current.rotation.y += delta * 0.12
+  })
+
+  return (
+    <mesh ref={mesh}>
+      <torusKnotGeometry args={[10, 3, 100, 16]} />
+      <meshStandardMaterial color="#ff3e3e" wireframe />
+    </mesh>
+  )
+}
+
+const AnimatedText = ({ text }) => {
+  const font = useLoader(FontLoader, 'https://threejs.org/examples/fonts/helvetiker_regular.typeface.json')
+  const mesh = useRef()
+
+  useFrame(({ clock }) => {
+    mesh.current.rotation.x = Math.sin(clock.getElapsedTime()) * 0.3
+    mesh.current.rotation.y = Math.sin(clock.getElapsedTime() * 0.8) * 0.3
+  })
+
+  return (
+    <mesh ref={mesh}>
+      <textGeometry args={[text, { font, size: 5, height: 1 }]} />
+      <meshPhongMaterial color="#ff3e3e" />
+    </mesh>
+  )
+}
+
+const services = [
+  { name: 'Web Scraping', description: 'Extract valuable data efficiently', icon: '🕸️' },
+  { name: 'IoT Solutions', description: 'Connect and manage your devices', icon: '🌐' },
+  { name: 'Web Development', description: 'Create powerful web applications', icon: '💻' },
+  { name: 'Mobile Development', description: 'Build iOS and Android apps', icon: '📱' },
+  { name: 'Security Tools', description: 'Protect your digital assets', icon: '🛡️' },
+]
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState('home')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
-  useEffect(() => {
-    const handleScroll = () => {
-      const sections = ['home', 'about', 'services', 'expertise', 'contact']
-      const current = sections.find(section => {
-        const element = document.getElementById(section)
-        if (element) {
-          const rect = element.getBoundingClientRect()
-          return rect.top <= 100 && rect.bottom >= 100
-        }
-        return false
-      })
-      if (current) {
-        setActiveSection(current)
-      }
+  const handleScroll = () => {
+    const scrollPosition = window.scrollY
+    const windowHeight = window.innerHeight
+
+    const sectionOffsets = {
+      home: 0,
+      about: windowHeight,
+      services: windowHeight * 2,
+      expertise: windowHeight * 3,
+      contact: windowHeight * 4,
     }
 
+    const currentSection = Object.keys(sectionOffsets).find(
+      section => scrollPosition < sectionOffsets[section] + windowHeight
+    )
+
+    setActiveSection(currentSection)
+  }
+
+  useEffect(() => {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const services = [
-    {
-      name: 'Penetration Testing',
-      description: 'Identify vulnerabilities in your systems before the bad guys do.',
-      icon: '🛡️'
-    },
-    {
-      name: 'Secure IoT Solutions',
-      description: 'Fortify your connected devices against potential threats.',
-      icon: '🌐'
-    },
-    {
-      name: 'Secure Web Development',
-      description: 'Build web applications with security at their core.',
-      icon: '💻'
-    },
-    {
-      name: 'Mobile Security',
-      description: 'Protect your mobile apps from malicious attacks.',
-      icon: '📱'
-    },
-    {
-      name: 'Threat Intelligence',
-      description: 'Stay one step ahead of cyber criminals with our data analysis.',
-      icon: '📊'
-    },
-  ]
+  const springProps = useSpring({
+    from: { opacity: 0, transform: 'translateY(50px)' },
+    to: { opacity: 1, transform: 'translateY(0px)' },
+    config: { tension: 300, friction: 10 },
+  })
+
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen)
+  }
 
   return (
-    <div className="min-h-screen bg-black text-red-500">
-      <header className="fixed w-full bg-black border-b border-red-700 z-50">
-        <nav className="container mx-auto px-6 py-3">
-          <div className="flex justify-between items-center">
-            <motion.a 
-              href="#home" 
-              className="text-2xl font-bold text-red-500"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              TechGuard Solutions
-            </motion.a>
-            <div className="hidden md:flex space-x-6">
-              {['home', 'about', 'services', 'expertise', 'contact'].map((item) => (
-                <motion.a
-                  key={item}
-                  href={`#${item}`}
-                  className={`capitalize ${activeSection === item ? 'text-red-500' : 'text-gray-500'} hover:text-red-400 transition-colors`}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {item}
-                </motion.a>
-              ))}
-            </div>
-            <button
-              className="md:hidden text-red-500 focus:outline-none"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
-              </svg>
-            </button>
-          </div>
-        </nav>
-      </header>
-
-      <AnimatePresence>
-        {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 bg-black z-40 flex items-center justify-center"
-          >
-            <motion.nav className="flex flex-col items-center space-y-6">
-              {['home', 'about', 'services', 'expertise', 'contact'].map((item) => (
-                <motion.a
-                  key={item}
-                  href={`#${item}`}
-                  className="text-2xl capitalize text-red-500 hover:text-red-400 transition-colors"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {item}
-                </motion.a>
-              ))}
-            </motion.nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <main className="pt-16">
-        <section id="home" className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black to-gray-900">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 text-red-500">
-              Secure Your Digital Fortress
-            </h1>
-            <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto text-gray-400">
-              Elite cybersecurity solutions for the modern battlefield.
-            </p>
-            <motion.a
-              href="#contact"
-              className="bg-red-600 text-white font-bold py-3 px-8 rounded-full inline-block hover:bg-red-700 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              Fortify Your Defenses
-            </motion.a>
-          </motion.div>
-        </section>
-
-        <section id="about" className="py-20 bg-gray-900">
-          <div className="container mx-auto px-6">
-            <h2 className="text-4xl font-bold text-center mb-12 text-red-500">
-              The Mastermind
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8 }}
-              >
-                <pre className="text-red-500 text-xs md:text-sm lg:text-base font-mono mb-4">
-{`
-        ███╗   ███╗ █████╗ ██████╗ ███╗   ███╗██╗██╗  ██╗
-        ████╗ ████║██╔══██╗██╔══██╗████╗ ████║██║██║ ██╔╝
-        ██╔████╔██║███████║██████╔╝██╔████╔██║██║█████╔╝ 
-        ██║╚██╔╝██║██╔══██║██╔══██╗██║╚██╔╝██║██║██╔═██╗ 
-        ██║ ╚═╝ ██║██║  ██║██║  ██║██║ ╚═╝ ██║██║██║  ██╗
-        ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═╝ 
-`}
-                </pre>
-                <h3 className="text-2xl font-semibold mb-4 text-red-400">Ethical Hacker & Security Expert</h3>
-                <p className="text-gray-400 mb-4">
-                  With over a decade of experience in the dark arts of cybersecurity, Marmik has been on both sides of the digital battlefield. Now, he uses his skills to protect and fortify digital assets against the ever-evolving threat landscape.
-                </p>
-                <p className="text-gray-400">
-                  Marmik's unique approach combines offensive security techniques with robust defensive strategies, ensuring your digital fortress is impenetrable.
-                </p>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-                className="bg-black p-6 rounded-lg shadow-lg border border-red-700"
-              >
-                <h3 className="text-2xl font-semibold mb-4 text-red-400">Breaking Barriers, Not Systems</h3>
-                <p className="text-gray-400 mb-4">
-                  At TechGuard Solutions, we're on a mission to democratize high-grade security. We believe every entity, regardless of size, deserves fort knox-level protection.
-                </p>
-                <p className="text-gray-400 mb-4">
-                  Our elite team of white-hat hackers provides top-tier security solutions at a fraction of the cost. This very website? Crafted in 10 minutes for just $40, showcasing our efficiency without compromising on security.
-                </p>
-                <p className="text-gray-400">
-                  By leveraging cutting-edge tech and our vast experience in the cybersecurity trenches, we pass on significant savings to our clients. Your security is our mission, and it doesn't have to break the bank.
-                </p>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        <section id="services" className="py-20 bg-black">
-          <div className="container mx-auto px-6">
-            <h2 className="text-4xl font-bold text-center mb-12 text-red-500">
-              Our Arsenal
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {services.map((service, index) => (
-                <motion.div
-                  key={service.name}
-                  className="bg-gray-900 p-6 rounded-lg shadow-lg border border-red-700"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="text-4xl mb-4">{service.icon}</div>
-                  <h3 className="text-xl font-semibold mb-2 text-red-400">{service.name}</h3>
-                  <p className="text-gray-400">{service.description}</p>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="expertise" className="py-20 bg-gray-900">
-          <div className="container mx-auto px-6">
-            <h2 className="text-4xl font-bold text-center mb-12 text-red-500">
-              Our Battleground
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <motion.div
-                className="bg-black p-6 rounded-lg shadow-lg border border-red-700"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8 }}
-              >
-                <h3 className="text-2xl font-semibold mb-4 text-red-400">Offensive Security</h3>
-                <p className="text-gray-400 mb-4">
-                  Our team of ethical hackers puts your systems to the test, identifying vulnerabilities before the bad guys do. We employ advanced penetration testing techniques to ensure your defenses are battle-ready.
-                </p>
-                <ul className="list-disc list-inside text-gray-400">
-                  <li>Advanced Persistent Threat (APT) Simulation</li>
-                  <li>Social Engineering Assessments</li>
-                  <li>Red Team Operations</li>
-                  <li>Vulnerability Assessment and Penetration Testing (VAPT)</li>
-                </ul>
-              </motion.div>
-              <motion.div
-                className="bg-black p-6 rounded-lg shadow-lg border border-red-700"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-              >
-                <h3 className="text-2xl font-semibold mb-4 text-red-400">Defensive Strategies</h3>
-                <p className="text-gray-400 mb-4">
-                  We don't just find the gaps; we fortify them. Our defensive strategies are designed to create an impenetrable shield around your digital assets.
-                </p>
-                <ul className="list-disc list-inside text-gray-400">
-                  <li>Security Information and Event Management (SIEM)</li>
-                  <li>Intrusion Detection and Prevention Systems (IDPS)</li>
-                  <li>Zero Trust Architecture Implementation</li>
-                  <li>Incident Response and Threat Hunting</li>
-                </ul>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        <section id="contact" className="py-20 bg-black">
-          <div className="container mx-auto px-6">
-            <h2 className="text-4xl font-bold text-center mb-12 text-red-500">
-              Initiate Secure Comms
-            </h2>
-            <motion.form
-              className="max-w-lg mx-auto bg-gray-900 p-8 rounded-lg shadow-lg border border-red-700"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-            >
-              <div className="mb-4">
-                <label htmlFor="name" className="block mb-2 font-semibold text-red-400">Codename</label>
-                <input type="text" id="name" className="w-full px-4 py-2 rounded bg-black text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 border border-red-700" required />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="email" className="block mb-2 font-semibold text-red-400">Secure Channel (Email)</label>
-                <input type="email" id="email" className="w-full px-4 py-2 rounded bg-black text-red-500 focus:outline-none focus:ring-2 focus:ring-red-500 border border-red-700" required />
-              </div>
-              <div className="mb-4">
-                <label htmlFor="message" className="block mb-2 font-semibold text-red-400">Encrypted Message</label>
-                <textarea id="message" rows={4} className="w-full px-4 py-2 rounded bg-black text-red-500 focus:outline-none  focus:ring-2 focus:ring-red-500 border border-red-700" required></textarea>
-              </div>
-              <motion.button
-                className="w-full bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 transition-colors"
-                type="submit"
-                whileHover={{ scale: 1.05 }}
+    <StyledContainer>
+      <StyledHeader
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+      >
+        <StyledNav>
+          <StyledLogo href="#home" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            TechGuard Solutions
+          </StyledLogo>
+          <StyledMenuButton onClick={toggleMenu} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+            ☰
+          </StyledMenuButton>
+          <StyledMenu isOpen={isMenuOpen}>
+            {['about', 'services', 'expertise', 'contact'].map((item) => (
+              <StyledLink
+                key={item}
+                href={`#${item}`}
+                active={activeSection === item}
+                onClick={() => setIsMenuOpen(false)}
+                whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
               >
-                Transmit
-              </motion.button>
-            </motion.form>
-          </div>
-        </section>
-      </main>
+                {item}
+              </StyledLink>
+            ))}
+          </StyledMenu>
+        </StyledNav>
+      </StyledHeader>
+
+      <StyledSection id="home">
+        <Canvas style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
+          <ambientLight intensity={0.5} />
+          <pointLight position={[10, 10, 10]} />
+          <AnimatedBackground />
+          <OrbitControls enableZoom={false} />
+          <EffectComposer>
+            <Bloom luminanceThreshold={0} luminanceSmoothing={0.9} height={300} />
+          </EffectComposer>
+        </Canvas>
+        <animated.div style={springProps}>
+          <StyledTitle>Innovative Tech Solutions</StyledTitle>
+          <p className="text-xl mb-8 text-center">
+            Empowering businesses with cutting-edge web scraping, IoT, and development solutions.
+          </p>
+          <StyledButton
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => document.getElementById('contact').scrollIntoView({ behavior: 'smooth' })}
+          >
+            Get Started
+          </StyledButton>
+        </animated.div>
+      </StyledSection>
+
+      <StyledSection id="about">
+        <StyledTitle>About Marmik</StyledTitle>
+        <StyledGrid>
+          <StyledCard>
+            <Canvas style={{ width: '100%', height: '200px' }}>
+              <ambientLight intensity={0.5} />
+              <pointLight position={[10, 10, 10]} />
+              <AnimatedText text="MARMIK" />
+              <OrbitControls enableZoom={false} />
+            </Canvas>
+            <h3 className="text-2xl font-semibold mb-4">Tech Innovator & Solution Architect</h3>
+            <p>
+              With over a decade of experience in the tech industry, Marmik has been at the forefront of innovation in web scraping, IoT solutions, and application development.
+            </p>
+          </StyledCard>
+          <StyledCard>
+            <h3 className="text-2xl font-semibold mb-4">Breaking Barriers in Tech</h3>
+            <p>
+              At TechGuard Solutions, we're on a mission to democratize access to advanced tech solutions. We believe every business, regardless of size, deserves access to cutting-edge technology.
+            </p>
+            <p className="mt-4">
+              Our innovative approach allows us to offer premium services at a fraction of the traditional cost, showcasing our efficiency and cost-effectiveness.
+            </p>
+          </StyledCard>
+        </StyledGrid>
+      </StyledSection>
+
+      <StyledSection id="services">
+        <StyledTitle>Our Services</StyledTitle>
+        <StyledGrid>
+          {services.map((service, index) => (
+            <StyledCard
+              key={service.name}
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <div className="text-4xl mb-4">{service.icon}</div>
+              <h3 className="text-xl font-semibold mb-2">{service.name}</h3>
+              <p>{service.description}</p>
+            </StyledCard>
+          ))}
+        </StyledGrid>
+      </StyledSection>
+
+      <StyledSection id="expertise">
+        <StyledTitle>Our Expertise</StyledTitle>
+        <StyledGrid>
+          <StyledCard>
+            <h3 className="text-2xl font-semibold mb-4">Web Scraping & Data Extraction</h3>
+            <p>
+              Our team of experts specializes in developing efficient and ethical web scraping solutions. We help businesses gather valuable data to drive informed decision-making.
+            </p>
+            <ul className="list-disc list-inside mt-4">
+              <li>Large-scale data extraction</li>
+              <li>Real-time web monitoring</li>
+              <li>Custom scraping tools development</li>
+              <li>Data cleaning and structuring</li>
+            </ul>
+          </StyledCard>
+          <StyledCard>
+            <h3 className="text-2xl font-semibold mb-4">IoT & Web Development</h3>
+            <p>
+              We create powerful, interconnected solutions that bridge the physical and digital worlds. Our IoT and web development expertise helps businesses stay ahead in the connected era.
+            </p>
+            <ul className="list-disc list-inside mt-4">
+              <li>IoT device integration</li>
+              <li>Real-time data processing</li>
+              <li>Responsive web applications</li>
+              <li>Cross-platform mobile apps</li>
+            </ul>
+          </StyledCard>
+        </StyledGrid>
+      </StyledSection>
+
+      <StyledSection id="contact">
+        <StyledTitle>Get in Touch</StyledTitle>
+        <StyledForm>
+          <StyledInput type="text" placeholder="Name" required />
+          <StyledInput type="email" placeholder="Email" required />
+          <StyledTextArea rows={4} placeholder="Message" required />
+          <StyledButton
+            type="submit"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            Send Message
+          </StyledButton>
+        </StyledForm>
+      </StyledSection>
 
       <footer className="bg-black text-red-500 py-8 border-t border-red-700">
         <div className="container mx-auto px-6 text-center">
-          <p>&copy; 2024 TechGuard Solutions. All rights secured.</p>
+          <p>&copy; 2024 TechGuard Solutions. All rights reserved.</p>
           <div className="mt-4">
             <a href="#" className="text-red-400 hover:text-red-300 mx-2">Privacy Policy</a>
             <a href="#" className="text-red-400 hover:text-red-300 mx-2">Terms of Service</a>
           </div>
         </div>
       </footer>
-    </div>
+    </StyledContainer>
   )
 }
